@@ -1,27 +1,24 @@
 package com.notnite.gloppers.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.block.entity.Hopper;
 import net.minecraft.block.entity.HopperBlockEntity;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.collection.DefaultedList;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(HopperBlockEntity.class)
 public abstract class HopperBlockEntityMixin {
-    @Unique
-    private static int dirtySlotState = 0;
-
-    @Shadow
-    private DefaultedList<ItemStack> inventory;
 
     @Unique
     private static boolean canTransfer(Inventory to, ItemStack stack) {
@@ -47,44 +44,26 @@ public abstract class HopperBlockEntityMixin {
         } catch (Exception e) {
             // ignored
         }
-        
+
         // Doesn't have a glob (or exception), so transfer
         return true;
     }
 
-    // We can't decrement the item stack before it gets passed to transfer, because we may not be allowed to transfer,
-    // eating an item. We know removeStack will get called immediately before transfer, so while it's messy, we can use
-    // a static variable to keep track of what slot we're removing from.
-    @Redirect(
-        method = "insert",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/block/entity/HopperBlockEntity;removeStack(II)Lnet/minecraft/item/ItemStack;")
-    )
-    private static ItemStack insert$gloppersRemoveStack(HopperBlockEntity instance, int slot, int amount) {
-        dirtySlotState = slot;
-        return instance.getStack(slot);
+    /**
+     * This method replaces the {@link HopperBlockEntity#getStack} call in {@link HopperBlockEntity#insert}, in order to filter out all {@link ItemStack item stacks} that do not match the pattern in the inventory. It does so by returning an {@link ItemStack#EMPTY empty item stack}, since the hopper skips empty slots.
+     */
+    @WrapOperation(method = "insert",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/block/entity/HopperBlockEntity;getStack(I)Lnet/minecraft/item/ItemStack;"))
+    private static ItemStack hideIncompatibleStacks(
+        HopperBlockEntity instance, int i, Operation<ItemStack> original,
+        @Local Inventory inventory) {
+        var stack = original.call(instance, i);
+        if (!canTransfer(inventory, stack))
+            return ItemStack.EMPTY;
+        return stack;
     }
 
-    // This works by mixing into the call of HopperBlockEntity::transfer and returning a stubbed item stack if it's not
-    // allowed to transfer. I wanted to instead insert a continue statement into the for loop, but I couldn't figure out
-    // a good way to do that.
-    @Redirect(
-        method = "insert",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/block/entity/HopperBlockEntity;transfer(Lnet/minecraft/inventory/Inventory;Lnet/minecraft/inventory/Inventory;Lnet/minecraft/item/ItemStack;Lnet/minecraft/util/math/Direction;)Lnet/minecraft/item/ItemStack;")
-    )
-    private static ItemStack insert$gloppersTransfer(
-        Inventory from, Inventory to, ItemStack stack, Direction side
-    ) {
-        if (!canTransfer(to, stack)) {
-            // The return value of this is only used to check if it's empty, and if so, returns that it succeeded.
-            // We can just return the item stack we were given, as we didn't remove from it.
-            return stack;
-        }
-
-        // Make sure to remove the item here, because we didn't in the actual call.
-        return HopperBlockEntity.transfer(from, to, from.removeStack(dirtySlotState, 1), side);
-    }
-
-    // This handles the case where a hopper extracts from a hopper above it (such as two anvils facing forward, stacked
+    // This handles the case where a hopper extracts from a hopper above it (such as two hoppers facing forward, stacked
     // on top of one another).
     @Inject(
         method = "extract(Lnet/minecraft/block/entity/Hopper;Lnet/minecraft/inventory/Inventory;ILnet/minecraft/util/math/Direction;)Z",
