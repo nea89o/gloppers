@@ -3,49 +3,49 @@ package com.notnite.gloppers.mixin;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
+import com.notnite.gloppers.GlobUtil;
 import net.minecraft.block.entity.Hopper;
 import net.minecraft.block.entity.HopperBlockEntity;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.text.PlainTextContent;
 import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.BitSet;
+
 @Mixin(HopperBlockEntity.class)
 public abstract class HopperBlockEntityMixin {
 
+
     @Unique
     private static boolean canTransfer(Inventory to, ItemStack stack) {
-        try {
-            if (to instanceof HopperBlockEntity) {
-                var hopperName = ((HopperBlockEntity) to).getName().copyContentOnly().getString();
-                var itemRegistryEntry = stack.getRegistryEntry().getKey();
-                if (itemRegistryEntry.isEmpty()) return false;
-                var itemName = itemRegistryEntry.get().getValue().getPath();
+        // Check if destination inventory is a hopper
+        if (!(to instanceof HopperBlockEntity hopperBlockEntity)) return true;
 
-                if (hopperName.startsWith("!")) {
-                    var globs = hopperName.substring(1).split(",");
-                    for (var glob : globs) {
-                        var strippedGlob = glob.replaceAll("[^a-zA-Z0-9_*?]", "");
-                        var regex = strippedGlob.replace(".", "\\.").replace("*", ".*").replace("?", ".");
-                        if (itemName.matches(regex)) return true;
-                    }
+        // Extract hopper name
+        // TODO: why use .getContent() (it used to be .copyContentOnly(), but i didn't see a point in that either)
+        var nameContent = hopperBlockEntity.getName().getContent();
+        if (!(nameContent instanceof PlainTextContent plainTextContent)) return true;
+        var hopperName = plainTextContent.string();
 
-                    // No globs matched, so don't transfer
-                    return false;
-                }
-            }
-        } catch (Exception e) {
-            // ignored
-        }
+        // Check if hopper is a glopper
+        if (!hopperName.startsWith("!")) return true;
+        var glob = hopperName.substring(1);
 
-        // Doesn't have a glob (or exception), so transfer
+        // Extract item stack name
+        var itemRegistryEntry = stack.getRegistryEntry().getKey();
+        if (itemRegistryEntry.isEmpty()) return false;
+        var itemName = itemRegistryEntry.get().getValue().getPath();
+
+        // Check if itemstack matches glob
+        if (!GlobUtil.matchGlob(itemName, glob)) return false;
+
         return true;
     }
 
