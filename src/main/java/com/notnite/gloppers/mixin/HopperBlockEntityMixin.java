@@ -44,7 +44,7 @@ public abstract class HopperBlockEntityMixin {
         var itemName = itemRegistryEntry.get().getValue().getPath();
 
         // Check if itemstack matches glob
-        if (!GlobUtil.matchGlob(itemName, glob)) return false;
+        if (!GlobUtil.matchGlobSequence(itemName, glob)) return false;
 
         return true;
     }

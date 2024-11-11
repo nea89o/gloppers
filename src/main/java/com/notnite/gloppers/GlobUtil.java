@@ -4,6 +4,16 @@ import java.util.BitSet;
 
 public class GlobUtil {
 
+    public static boolean matchGlobSequence(String name, String globs) {
+        int nextSplit, lastSplit = 0;
+        while ((nextSplit = globs.indexOf(',', lastSplit)) > 0) {
+            if (matchGlob(name, globs.substring(lastSplit, nextSplit)))
+                return true;
+            lastSplit = nextSplit + 1;
+        }
+        return matchGlob(name, globs.substring(lastSplit));
+    }
+
     /**
      * Match a string against a glob.
      */
